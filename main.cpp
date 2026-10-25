@@ -5,118 +5,111 @@
 #include <vector>
 #include <map>
 #include <cmath>
+#include <fstream>
+#include <climits>
+#include <cctype>
 
 class NaiveBayes{
     public:
-    std::map<std::string, int> countOf_Pspeech;
-    std::map<std::string, int> countOf_Hspeech;
-    std::map<std::string, bool> vocabUnik;
-    int total_Pspeech = 0;
-    int total_Hspeech = 0;
-    int totalPword = 0;
-    int totalHword = 0;
+    std::map<std::string, int> politicalSpeechWordCounts;
+    std::map<std::string, int> nonPoliticalSpeechWordCounts;
+    std::map<std::string, bool> uniqueVocabulary;
+    int totalPoliticalSpeeches = 0;
+    int totalNonPoliticalSpeeches = 0;
+    int totalPoliticalSpeechWords = 0;
+    int totalNonPoliticalSpeechWords = 0;
     // std::map<std::string, int> countOf_data2;
 
 };
 
 class DataSet : public NaiveBayes{
     public:
-    std::string data1;
-    std::string data2;
-    
-
     //tahap tokenisasi dari data 
-    std::vector<std::string> tokinisasiData1(std::string& data){
-        std::stringstream ss(data);
-        std::string token;
-        std::vector<std::string> tokens;
-        while(getline(ss, token, ' ')){
-            tokens.push_back(token);
-            vocabUnik[token] = true;
+    std::vector<std::string> tokenizeText(const std::string& speechText, bool updateVocabulary){
+        std::stringstream textStream(speechText);
+        std::string word;
+        std::vector<std::string> words;
+        while(textStream >> word){
+            std::size_t firstCharacter = 0;
+            std::size_t lastCharacter = word.size();
+            while(firstCharacter < lastCharacter && std::ispunct(static_cast<unsigned char>(word[firstCharacter]))){
+                firstCharacter++;
+            }
+            while(lastCharacter > firstCharacter && std::ispunct(static_cast<unsigned char>(word[lastCharacter - 1]))){
+                lastCharacter--;
+            }
+            word = word.substr(firstCharacter, lastCharacter - firstCharacter);
+            if(word.empty()){
+                continue;
+            }
+
+            words.push_back(word);
+            if(updateVocabulary){
+                uniqueVocabulary[word] = true;
+            }
         }
       
-        return tokens;
+        return words;
     }
 
 
     //bedakan dari label data 
-    void train(std::string& data, std::string label){
-        std::vector<std::string> words = tokinisasiData1(data);
-        if(label == "politic speech"){
-            total_Pspeech++;
-            for(auto& w : words){
-                totalPword++;
-                countOf_Pspeech[w]++;
+    void train(std::string& speechText, std::string speechClass){
+        std::vector<std::string> words = tokenizeText(speechText, true);
+        if(speechClass == "politic speech"){
+            totalPoliticalSpeeches++;
+            for (auto& word : words){
+                totalPoliticalSpeechWords++;
+                politicalSpeechWordCounts[word]++;
             }
-        }else if(label == "non politic speech"){
-            total_Hspeech++;
-            for(auto& w : words){
-                totalHword++;
-                countOf_Hspeech[w]++;
+        }else if(speechClass == "non politic speech"){
+            totalNonPoliticalSpeeches++;
+            for (auto& word : words){
+                totalNonPoliticalSpeechWords++;
+                nonPoliticalSpeechWordCounts[word]++;
             }
         }
     }
 
-  //  std::string tokinisasiData2(std::string& data){
-        //int vocabUnikSize = vocabUnik.size();
-        //std::stringstream ss(data);
-        //std::string token;
-        //std::vector<std::string> tokens;
-        //while(getline(ss, token, ' ')){
-            //tokens.push_back(token);
-        //}
-        //for(auto& t : tokens){
-            //std::cout<<t<<"\n";
-            //countOf_Hspeech[t]++;
-            //vocabUnik[t] = true;
-           
-           //std::cout<<"kata yang keluar:"<<vocabUnikSize<<"\n";
-           
-           
-           //total_Hspeech++;
-           //totalHword++;
-            //std::cout<<"jumlah kata yang keluar:"<<countOf_Hspeech[t]<<"/"<<total_Hspeech<<"\n";
-        //}
-        //return tokens[0];
-
-    //}
-    
     //rumus menghitung teorema bayes untuk data yang ada
-    std::string probability(std::string& data){
+    std::string probability(std::string& speechText){
         //kumpulkan semua data yang ada menjadi 1
-        float naiveClass = total_Pspeech + total_Hspeech;
+        float totalSpeechCount = totalPoliticalSpeeches + totalNonPoliticalSpeeches;
         //bagi data1 dengan keseluruhan data yang ada untuk menghitung probabilitas
         //laplace smoothing untuk menghindari pembagian dengan 0 tambahkan 1 ke total_pspeech
-        float Pspeech = std::log((float)(total_Pspeech + 1) / (float)(naiveClass + 1));
-        float Hspeech = std::log((float)(total_Hspeech + 1) / (float)(naiveClass + 1));
+        float politicalSpeechLogProbability = std::log((float)(totalPoliticalSpeeches + 1) / (float)(totalSpeechCount + 1));
+        float nonPoliticalSpeechLogProbability = std::log((float)(totalNonPoliticalSpeeches + 1) / (float)(totalSpeechCount + 1));
         
-        float Logp = Pspeech;
-        float Logh = Hspeech;
+        float accumulatedPoliticalSpeechLogProbability = politicalSpeechLogProbability;
+        float accumulatedNonPoliticalSpeechLogProbability = nonPoliticalSpeechLogProbability;
         
-        std::vector<std::string> words = tokinisasiData1(data);
+        std::vector<std::string> words = tokenizeText(speechText, false);
         
-        int vocabUnikSize = vocabUnik.size();
-        for(auto& v : words){
-            int priorx = countOf_Pspeech.count(v) ? countOf_Pspeech[v] : 0;
-            int priory = countOf_Hspeech.count(v) ? countOf_Hspeech[v] : 0;
+        int uniqueVocabularySize = uniqueVocabulary.size();
+        int iteration = 0;
+        for(auto& word : words){
+            iteration++;
+            int politicalSpeechWordCount = politicalSpeechWordCounts.count(word) ? politicalSpeechWordCounts[word] : 0;
+            int nonPoliticalSpeechWordCount = nonPoliticalSpeechWordCounts.count(word) ? nonPoliticalSpeechWordCounts[word] : 0;
        
             //hitung likeood data 1 dan data2 
-              float likehoodP = std::log((float)(priorx + 1)/ (float)(totalPword + vocabUnikSize + 1));
-              float likehoodH = std::log((float)(priory + 1)/ (float)(totalHword + vocabUnikSize + 1));
+              float politicalSpeechWordLogProbability = std::log((float)(politicalSpeechWordCount + 1)/ (float)(totalPoliticalSpeechWords + uniqueVocabularySize));
+              float nonPoliticalSpeechWordLogProbability = std::log((float)(nonPoliticalSpeechWordCount + 1)/ (float)(totalNonPoliticalSpeechWords + uniqueVocabularySize));
 
-              Logh += likehoodH;
-              Logp += likehoodP;
+              accumulatedNonPoliticalSpeechLogProbability += nonPoliticalSpeechWordLogProbability;
+              accumulatedPoliticalSpeechLogProbability += politicalSpeechWordLogProbability;
 
-              std::cout<<"Logp: "<<Logp<<"\n";
-              std::cout<<"Logh: "<<Logh<<"\n";
-              std::cout<<"vocabulary: "<<vocabUnikSize<<"\n";
-
-              
+              std::cout << "Iterasi " << iteration << " - kata: " << word << "\n";
+              std::cout << "Probabilitas log pidato politik: " << accumulatedPoliticalSpeechLogProbability << "\n";
+              std::cout << "Probabilitas log pidato non-politik: " << accumulatedNonPoliticalSpeechLogProbability << "\n";
         }
        
+        std::cout<<"Probabilitas log pidato politik: "<<accumulatedPoliticalSpeechLogProbability<<"\n";
+        std::cout<<"Probabilitas log pidato non-politik: "<<accumulatedNonPoliticalSpeechLogProbability<<"\n";
+        std::cout<<"Jumlah kosakata: "<<uniqueVocabularySize<<"\n";
         
         //hitung apakah data1 lebih besar dari data2, maka klasifikasikan sebagai "pspeech"
-        return Logp > Logh ? "politic speech" : "non politic speech";
+        return accumulatedPoliticalSpeechLogProbability > accumulatedNonPoliticalSpeechLogProbability ? "politic speech" : "non politic speech";
             }
 
     std::string OutputData(std::string& data1){
@@ -124,54 +117,123 @@ class DataSet : public NaiveBayes{
         return data1;
     }
 
-    void CountMinMax(std::map<std::string, int>& countMap){
-        std::string minWord, maxWord;
-        int minCount = INT_MAX;
-        int maxCount = 0;
+    void printWordOccurrenceExtremes(const std::string& datasetName, const std::map<std::string, int>& wordOccurrenceCounts){
+        std::string leastFrequentWord, mostFrequentWord;
+        int leastOccurrenceCount = INT_MAX;
+        int mostOccurrenceCount = 0;
 
-        for (auto& v : countMap){
-            if(v.second > maxCount){
-                maxCount = v.second;
-                maxWord = v.first;
+        for (auto& wordOccurrence : wordOccurrenceCounts){
+            if(wordOccurrence.second > mostOccurrenceCount){
+                mostOccurrenceCount = wordOccurrence.second;
+                mostFrequentWord = wordOccurrence.first;
             } 
-            if(v.second < minCount){
-                minCount = v.second;
-                minWord = v.first;
+            if(wordOccurrence.second < leastOccurrenceCount){
+                leastOccurrenceCount = wordOccurrence.second;
+                leastFrequentWord = wordOccurrence.first;
 
             }
         }
 
-        std::cout << "Kata dengan jumlah kemunculan terbanyak: " << maxWord << " (" << maxCount << " kali)" << std::endl;
-        std::cout << "Kata dengan jumlah kemunculan paling sedikit: " << minWord << " (" << minCount << " kali)" << std::endl;
+        std::cout << "\nDataset " << datasetName << ":\n";
+        if(wordOccurrenceCounts.empty()){
+            std::cout << "Tidak ada kata untuk dihitung." << std::endl;
+            return;
+        }
+        std::cout << "Kata dengan jumlah kemunculan terbanyak: " << mostFrequentWord << " (" << mostOccurrenceCount << " kali)" << std::endl;
+        std::cout << "Kata dengan jumlah kemunculan paling sedikit: " << leastFrequentWord << " (" << leastOccurrenceCount << " kali)" << std::endl;
     }
 
 };
 
+bool loadDataset(const std::string& datasetPath, const std::string& expectedDatasetLabel, const std::string& classLabel, DataSet& data){
+    std::ifstream file(datasetPath);
+    if(!file.is_open()){
+        std::cerr << "Gagal membuka dataset: " << datasetPath << std::endl;
+        return false;
+    }
+
+    std::string line;
+    if(!std::getline(file, line)){
+        std::cerr << "Header dataset tidak valid: " << datasetPath << std::endl;
+        return false;
+    }
+    if(line.compare(0, 3, "\xEF\xBB\xBF") == 0){
+        line.erase(0, 3);
+    }
+    if(line != "text,label"){
+        std::cerr << "Header dataset tidak valid: " << datasetPath << std::endl;
+        return false;
+    }
+
+    int rowNumber = 1;
+    while(std::getline(file, line)){
+        rowNumber++;
+        if(line.empty()){
+            continue;
+        }
+
+        std::size_t separator = line.rfind(',');
+        if(separator == std::string::npos){
+            std::cerr << "error" << datasetPath << ":" << rowNumber << std::endl;
+            return false;
+        }
+
+        std::string text = line.substr(0, separator);
+        std::string label = line.substr(separator + 1);
+        if(!label.empty() && label.back() == '\r'){
+            label.pop_back();
+        }
+        if(label != expectedDatasetLabel){
+            std::cerr << "error" << std::endl;
+            return false;
+        }
+
+        data.train(text, classLabel);
+    }
+
+    return true;
+}
+
+bool loadTestDataset(const std::string& datasetPath, std::string& testText){
+    std::ifstream file(datasetPath);
+    if(!file.is_open()){
+        std::cerr << "Gagal membuka dataset pengujian: " << datasetPath << std::endl;
+        return false;
+    }
+
+    std::ostringstream contents;
+    contents << file.rdbuf();
+    testText = contents.str();
+    if(testText.find_first_not_of(" \t\n\r") == std::string::npos){
+        std::cerr << "Dataset pengujian kosong: " << datasetPath << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
 int main(){
     DataSet data;
-    data.data1 = "Yang saya hormati Menteri Perumahan dan Kawasan Permukiman Saudara Maruarar Sirait, beserta seluruh jajaran Kementerian Perumahan dan Kawasan Permukiman yang hadir;.....\n"
-    "Ketua Dewan Perwakilan Daerah Republik Indonesia Saudara Sultan Bachtiar Najamudin. Para Menteri Koordinator, para Menteri, Jaksa Agung, Panglima TNI. Saya ulangi, ya, Jaksa Agung, Kapolri. Selalu berdekatan, baru Panglima TNI....,pidatoP"
-    "Kepala Badan dan para Wakil Menteri, serta seluruh anggota Kabinet Merah Putih yang hadir, yang daftarnya terlampir. Di sini ada 40 nama, tapi sebagian sudah disebut tadi. Perlu disebut lagi? Enggak apa-apa ya, tidak mengurangi rasa hormat ya, pidatoP"
-    "Tapi ada, di sini ada, apa, yang saya sebut, saya kira tadi. Menteri Perumahan, salah tadi bukan, ini, apa, Ibu Destry sekarang adalah pejabat, Pejabat Gubernur Sementara, PGS, ya, singkatannya, Pejabat Gubernur Sementara. Jadi pejabat. Kayaknya, gimana? Oke. Terserah DPR nanti, ya, kira-kira, pidatoP"
-    "Jadi saya tidak sebut, ya, Menteri-menteri. Ini Menteri-menteri ini jago-jago semua ini, Menteri-Menteri saya, Menko-Menko saya semua, ya. Kepala Badan, Wakil Menterinya juga jagoan semua, ya. Tadi Menteri UMKM juga kumisnya gagah sekali, kok, itu, dari Kerala keturunannya. Dia senang, Perdana Menteri Modi datang dia senang sekali itu. Saya kira kau keturunan Gujarat, ternyata bukan. Kerala, Kerala, pidatoP";
-    data.data2 = "data ini berbeda dengan data1 untuk menguji algoritma naive bayes, nanti nya data ini akan diubah, pidato"
-    "Bapak dan Ibu tamu undangan, serta para hadirin yang saya hormati, marilah kita panjatkan puji syukur atas kehadirat Allah SWT atas limpahan rahmat-Nya kepada kita semua.";
+    if(!loadDataset("dataset/train/politicspeech.csv", "politicspeech", "politic speech", data) ||
+       !loadDataset("dataset/train/nonpoliticspeech.csv", "nonpoliticspeech", "non politic speech", data)){
+        return 1;
+    }
 
-   // data.tokinisasiData1(data.data1);
-   data.train(data.data1, "politic speech");
-   data.train(data.data2, "non politic speech");
-    //data.tokinisasiData2(data.dat
+    std::string testText;
+    if(!loadTestDataset("dataset/testing/test.csv", testText)){
+        return 1;
+    }
 
-    std::vector<std::string> testData = {
-        "warahmatullahi wabarakatuh, bapak ibu yang terhormat dan teman teman yang ada disini, saya sekarang akan menyampaikan pidato"
-    };
+    std::string classificationResult = data.probability(testText);
+    std::cout << "Hasil Klasifikasi: " << classificationResult << std::endl;
+    data.printWordOccurrenceExtremes("politik", data.politicalSpeechWordCounts);
+    data.printWordOccurrenceExtremes("nonpolitik", data.nonPoliticalSpeechWordCounts);
 
-    
-    for(auto& test : testData){
-        std::string result = data.probability(test);
-        std::cout << "Hasil Klasifikasi: " << result << std::endl;
-        data.CountMinMax(data.countOf_Pspeech);
-        }
+    std::map<std::string, int> testWordOccurrenceCounts;
+    for(const auto& word : data.tokenizeText(testText, false)){
+        testWordOccurrenceCounts[word]++;
+    }
+    data.printWordOccurrenceExtremes("testing", testWordOccurrenceCounts);
 
     return 0;
 }
