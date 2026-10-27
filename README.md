@@ -17,6 +17,8 @@ Proyek ini merupakan eksperimen klasifikasi teks untuk membedakan dua kategori p
 * Tokenisasi teks sederhana.
 * Pemisahan dataset training dan testing.
 * Statistik frekuensi kata dari dataset politik, nonpolitik, dan testing.
+* Penyimpanan model binary berversi, termasuk statistik kelas, smoothing, dan konfigurasi preprocessing.
+* Evaluasi model tersimpan melalui opsi `--load-model-evaluation`.
 * Tidak menggunakan library machine learning eksternal.
 
 ## Struktur Repository
@@ -24,14 +26,26 @@ Proyek ini merupakan eksperimen klasifikasi teks untuk membedakan dua kategori p
 ```text
 naivebayescpp-version/
 ├── main.cpp
+├── include/
+│   ├── modelpersistence.h
+│   └── ModelEvaluation.h
+├── src/
+│   ├── modelpersistence.cpp
+│   └── ModelEvaluation.cpp
 ├── README.md
 ├── LICENSE
 └── dataset/
     ├── train/
-    │   ├── politicspeech.csv
-    │   └── nonpoliticspeech.csv
+    │   ├── politicspeech/
+    │   │   └── *.csv
+    │   └── nonpoliticspeech/
+    │       └── *.csv
     └── testing/
-        └── test.csv
+        ├── test-1n.csv
+        ├── test-2n.csv
+        ├── test-3p.csv
+        ├── test-4n.csv
+        └── test-5p.csv
 ```
 
 ## Persyaratan
@@ -65,19 +79,19 @@ cd <NAMA-FOLDER>
 **Windows (GCC/MinGW-w64):**
 
 ```powershell
-g++ main.cpp -o naivebayes.exe
+g++ -Iinclude main.cpp src/* -o naivebayes.exe
 ```
 
 **Linux (GCC):**
 
 ```bash
-g++ main.cpp -o naivebayes
+g++ -Iinclude main.cpp src/* -o naivebayes
 ```
 
 **macOS (Clang):**
 
 ```bash
-clang++ main.cpp -o naivebayes
+clang++ -Iinclude main.cpp src/* -o naivebayes
 ```
 
 ### 4. Jalankan Program
@@ -87,6 +101,29 @@ clang++ main.cpp -o naivebayes
 ```powershell
 .\naivebayes.exe
 ```
+
+Secara default program melatih model dari dataset, menyimpannya ke folder
+`models/` dengan nama `models-naivebayes-smoothingAlpha.bin`, lalu mengevaluasi
+hasilnya. Folder `models/` dibuat otomatis jika belum ada.
+
+Untuk evaluasi saja menggunakan model yang sudah tersimpan, tanpa memuat ulang
+dataset training:
+
+```powershell
+.\naivebayes.exe --load-model-evaluation
+```
+
+Mode tersebut hanya memuat file model dan mengevaluasi file `.csv` dalam
+`dataset/testing/`. File testing harus berakhiran `p` (politik) atau `n`
+(nonpolitik) sebelum ekstensi. Program menampilkan hasil tiap file, akurasi,
+precision, recall, dan F1-score agregat untuk keseluruhan model (micro average),
+bukan metrik terpisah untuk setiap kelas.
+
+File `models/models-naivebayes-smoothingAlpha.bin` menyimpan jumlah dokumen per
+kelas, frekuensi kata per kelas, total kata, kosakata, nilai Laplace smoothing,
+konfigurasi preprocessing, dan versi format binary. Jika format file tidak
+didukung atau datanya rusak, program menampilkan error dan berhenti alih-alih
+memakai model yang tidak valid.
 
 **Linux dan macOS:**
 
@@ -103,28 +140,51 @@ clang++ main.cpp -o naivebayes
 
 ## Format Dataset
 
-Dataset menggunakan format CSV dengan dua kolom, yaitu `text` dan `label`.
+Dataset training menggunakan format satu kolom, yaitu `text`. Kelas ditentukan
+oleh folder tempat file disimpan.
 
 Contoh:
 
 ```csv
-text,label
-"Contoh teks pidato politik.",politicspeech
-"Contoh teks pidato nonpolitik.",nonpoliticspeech
+text
+"Contoh teks pidato."
 ```
 
 File dataset training:
 
-* `dataset/train/politicspeech.csv`
-* `dataset/train/nonpoliticspeech.csv`
+* politicspeech : 
+ - `dataset/train/politicspeech/1.csv`
+ - `dataset/train/politicspeech/2.csv`
+ - `dataset/train/politicspeech/3.csv`
+ - `dataset/train/politicspeech/4.csv`
+ - `dataset/train/politicspeech/5.csv`
+ - `dataset/train/politicspeech/6.csv`
+ 
+* nonpoliticspeech: 
+ - `dataset/train/nonpoliticspeech/1.csv`
+ - `dataset/train/nonpoliticspeech/2.csv`
+ - `dataset/train/nonpoliticspeech/3.csv`
+ - `dataset/train/nonpoliticspeech/4.csv`
+ - `dataset/train/nonpoliticspeech/5.csv`
+ - `dataset/train/nonpoliticspeech/6.csv`
+
+Setiap file training menggunakan header `text`, kemudian berisi teks pidato
+untuk kelas sesuai nama foldernya. File di folder `politicspeech/` masuk kelas
+politik, sedangkan file di folder `nonpoliticspeech/` masuk kelas nonpolitik.
+Program memuat semua file `.csv` yang ada di masing-masing folder.
 
 File dataset testing:
 
-* `dataset/testing/test.csv`
+* `dataset/testing/test-1n.csv`
+* `dataset/testing/test-2n.csv`
+* `dataset/testing/test-3p.csv`
+* `dataset/testing/test-4n.csv`
+* `dataset/testing/test-5p.csv`
 
-> **Penting:** Dataset yang digunakan saat ini merupakan data dummy untuk keperluan pengembangan dan pengujian awal. Dataset tersebut bukan real dataset yang telah dikurasi atau divalidasi secara sistematis.
-
-Format CSV harus sesuai dengan implementasi parser di dalam program, terutama dalam penanganan koma, tanda kutip, dan baris baru.
+File testing berisi teks pidato. Label aktual dibaca dari nama file: akhiran `p`
+berarti politik dan akhiran `n` berarti nonpolitik. Program mengklasifikasikan
+setiap file, membandingkan label aktual dengan tebakan model, lalu menampilkan
+jumlah prediksi benar dan akurasi testing.
 
 ## Algoritma
 
@@ -139,93 +199,75 @@ Tahapan pemrosesan:
 5. Menghitung skor log probabilitas teks masukan untuk setiap kelas.
 6. Menentukan hasil klasifikasi berdasarkan skor log probabilitas yang lebih tinggi.
 
-## Hasil Uji Coba Sementara
+## Hasil Pengujian
 
-Pengujian awal dilakukan menggunakan implementasi Naive Bayes Classifier dengan dataset dummy.
+Berikut catatan hasil dari dataset dan output program yang digunakan.
 
-Hasil berikut merupakan keluaran dari salah satu percobaan, bukan hasil evaluasi menyeluruh terhadap performa model.
+### Statistik model
 
-### 1. Hasil Klasifikasi
+| Informasi | Hasil |
+| --- | ---: |
+| Jumlah kosakata | 3.074 |
+| Kata terbanyak di training politik | `yang` (308 kali) |
+| Kata paling sedikit di training politik | `0,0007` (1 kali) |
+| Kata terbanyak di training nonpolitik | `yang` (95 kali) |
+| Kata paling sedikit di training nonpolitik | `Antariksa` (1 kali) |
 
-| Informasi                        | Hasil                |
-| -------------------------------- | -------------------- |
-| Jumlah kosakata                  | 2.092                |
-| Prediksi kelas                   | `non politic speech` |
-| Skor log probabilitas politik    | -41594.6             |
-| Skor log probabilitas nonpolitik | -40982.7             |
+Skor log yang tercetak sebelum rincian file testing:
 
-Model memilih kelas `non politic speech` karena skor log probabilitasnya lebih tinggi daripada skor kelas `politic speech`.
+| Kelas | Skor log probabilitas |
+| --- | ---: |
+| Politik | -44.404,7 |
+| Nonpolitik | -42.259,6 |
 
-Nilai log probabilitas yang negatif merupakan hal yang wajar. Skor ini bukan persentase keyakinan model, sehingga tidak dapat langsung ditafsirkan sebagai probabilitas dalam bentuk persen.
+### Perbandingan hasil testing
 
-### 2. Statistik Frekuensi Kata
+Label aktual diambil dari nama file (`p` = politik, `n` = nonpolitik). Skor
+log probabilitas lebih tinggi (lebih dekat ke nol) menjadi tebakan model.
 
-Program juga menghitung kata dengan frekuensi kemunculan tertinggi dan terendah pada setiap sumber data.
+| File testing | Label aktual | Skor politik | Skor nonpolitik | Tebakan model | Hasil |
+| --- | :---: | ---: | ---: | :---: | --- |
+| `test-1n.csv` | n | -49.472,9 | -46.986,1 | n | Benar |
+| `test-2n.csv` | n | -46.707,5 | -45.750,4 | n | Benar |
+| `test-3p.csv` | p | -52.215,5 | -49.855,9 | n | Salah |
+| `test-4n.csv` | n | -48.235,3 | -47.609,4 | n | Benar |
+| `test-5p.csv` | p | Tidak dicatat | Tidak dicatat | n | Salah |
 
-| Sumber data         | Kata terbanyak | Frekuensi | Kata paling sedikit | Frekuensi |
-| ------------------- | -------------- | --------: | ------------------- | --------: |
-| Training politik    | `dan`          |       134 | `1945`              |         1 |
-| Training nonpolitik | `dan`          |       147 | `Air`               |         1 |
-| Testing             | `yang`         |       229 | `Ajak`              |         1 |
+**Akurasi testing: 3/5 (60%).**
 
-Statistik tersebut menggambarkan frekuensi kata berdasarkan hasil penghitungan program pada dataset yang digunakan.
+### Hasil evaluasi keseluruhan
 
-Kata dengan frekuensi tertinggi atau terendah tidak secara otomatis menentukan hasil klasifikasi. Prediksi tetap didasarkan pada perhitungan probabilitas model.
+| Metrik | Hasil |
+| --- | ---: |
+| Akurasi testing | 3/5 (60%) |
+| Prediksi benar keseluruhan | 3 |
+| Prediksi salah keseluruhan | 2 |
+| Precision keseluruhan (micro) | 60% |
+| Recall keseluruhan (micro) | 60% |
+| F1-score keseluruhan (micro) | 60% |
 
-### 3. Log Proses Klasifikasi
+Statistik kata pada file testing:
 
-Pada pengujian, program juga menghasilkan skor log probabilitas secara bertahap untuk setiap kata yang diproses.
+| File testing | Kata terbanyak | Frekuensi | Kata paling sedikit | Frekuensi |
+| --- | --- | ---: | --- | ---: |
+| `test-1n.csv` | `yang` | 229 | `Ajak` | 1 |
+| `test-2n.csv` | `yang` | 292 | `Ajak` | 3 |
+| `test-3p.csv` | `yang` | 278 | `1945` | 3 |
+| `test-4n.csv` | `yang` | 321 | `30` | 3 |
+| `test-5p.csv` | `dan` | 229 | `1982` | 3 |
 
-Contoh keluaran:
-
-```text
-Iterasi 5784 - kata: dan
-Probabilitas log pidato politik: -41572.5
-Probabilitas log pidato non-politik: -40959.3
-
-Probabilitas log pidato politik: -41594.6
-Probabilitas log pidato non-politik: -40982.7
-
-Jumlah kosakata: 2092
-Hasil Klasifikasi: non politic speech
-```
-
-Skor kumulatif berubah seiring pemrosesan kata dalam teks. Untuk menentukan kelas prediksi, model membandingkan skor akhir kedua kelas.
-
-### 4. Interpretasi Hasil
-
-Berdasarkan percobaan tersebut, implementasi berhasil menghasilkan prediksi kelas dan statistik frekuensi kata.
-
-Namun, hasil ini belum cukup untuk menyimpulkan bahwa model memiliki tingkat akurasi tertentu karena:
-
-* Dataset masih berupa data dummy.
-* Hasil tersebut hanya berasal dari percobaan yang ditampilkan.
-* Belum tersedia pengukuran performa menyeluruh menggunakan label aktual dan metrik evaluasi.
-* Frekuensi kata saja tidak menunjukkan kemampuan model dalam mengklasifikasikan teks yang belum pernah dilihat.
-
-Dengan demikian, hasil uji coba ini hanya menunjukkan bahwa alur klasifikasi dasar telah berjalan pada data yang digunakan, bukan membuktikan bahwa model sudah akurat untuk data nyata.
-
-> **Catatan:** Statistik frekuensi kata pada bagian ini mengikuti keluaran program yang diberikan. Hasilnya dapat berubah apabila isi dataset atau implementasi pemrosesan teks diubah.
+Output yang dicatat tidak memuat skor log probabilitas untuk `test-5p.csv`.
+Hasil ini adalah catatan dari lima file testing tersebut, bukan jaminan akurasi
+model pada dataset lain.
 
 ## Batasan
 
-* Dataset masih berupa data dummy, bukan real dataset.
+* 80% Dataset masih berupa data dummy, bukan real dataset.
 * Hasil klasifikasi belum mencerminkan performa model pada data dunia nyata.
 * Tokenisasi masih sederhana dan belum menangani seluruh variasi bahasa Indonesia.
 * Model dapat salah mengklasifikasikan teks yang memiliki karakteristik serupa pada kedua kelas.
 * Belum tersedia evaluasi menyeluruh menggunakan metrik accuracy, precision, recall, dan F1-score.
 * Definisi kelas politik dan nonpolitik perlu ditetapkan secara konsisten.
-
-## Pengembangan Selanjutnya
-
-Beberapa pengembangan yang dapat dilakukan:
-
-* Mengumpulkan dan memvalidasi dataset nyata yang representatif.
-* Memperbaiki tokenisasi dan normalisasi teks bahasa Indonesia.
-* Menambahkan evaluasi otomatis menggunakan label aktual pada dataset testing.
-* Menghitung accuracy, precision, recall, dan F1-score.
-* Menambahkan confusion matrix untuk menganalisis hasil klasifikasi.
-* Mengoptimalkan pemrosesan teks dan tampilan output program.
 
 ## Tujuan Proyek
 
@@ -236,3 +278,9 @@ Proyek ini bukan sistem produksi dan tidak dimaksudkan untuk menentukan secara m
 ## Lisensi
 
 Lihat file `LICENSE` untuk informasi mengenai lisensi proyek ini.
+
+* File untuk dataset training pidatospeech diambil dari setkab.go.id
+
+## Notes
+
+* Kami telah mengganti dataset training dengan dataset nyata. Tetapi dataset tersebut tidak balance dan menyebabkan models overfithing, Kedepannya kami akan mengembangkan model ini dan memperbanyak dataset.
